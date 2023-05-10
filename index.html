@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+                <html>
+                  <head>
+                    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+                    <meta charset="utf-8">
+                    <title>SAGUENAY - AVIATURE</title>
+                    <script src="https://3d-mapper.com/_MAP/_BABYLON/dist/babylon.js"></script>
+                    <script src="https://3d-mapper.com/_MAP/_BABYLON/dist/materialsLibrary/babylon.waterMaterial.js"></script>
+                    <script src="https://3d-mapper.com/_MAP/_BABYLON/dist/earcut.min.js"></script>
+                    <style>
+                      html {
+                          height: 100%;
+                      }
+
+                      body {
+                          height: 100%;
+                          min-height: 100%;
+                          background-color: transparent;
+                          padding: 0;
+                          margin: 0;
+                          font-family: "Helvetica Neue", Arial, Helvetica, Geneva, sans-serif;
+                      }
+
+                      canvas {
+                          width: 100%;
+                          height: 100%;
+                          background-color: transparent;
+                      }
+
+                      canvas:focus {
+                          outline: none;
+                      }
+
+                      #atributation {
+                          position: absolute;
+                          right: 3px;
+                          bottom: 3px;
+                          background-color: white;
+                          color: gray;
+                          padding: 3px 6px;
+                          font-size: 10px;
+                          opacity: 0.8;
+                      }
+
+                      #atributation a {
+                          color: gray;
+                      }
+
+                      #pinPopupWrapper {
+                          position: absolute;
+                          left: 0;
+                          top: 0;
+                          width: 100%;
+                          height: 100%;
+                          background-color: #000000;
+                          opacity: 0.8;
+                          display: none
+                      }
+
+                      .pinPopup {
+                          width: 300px;
+                          position: absolute;
+                          top: 50%;
+                          left: 50%;
+                          margin-left: -150px;
+                          margin-top: -150px;
+                          background: #fff;
+                          -webkit-border-radius: 4px;
+                          -moz-border-radius: 4px;
+                          border-radius: 4px;
+                          -webkit-box-shadow: 0px 0px 10px 0px rgba(0, 0, 0, 0.7);
+                          box-shadow: 0px 0px 10px 0px rgba(0, 0, 0, 0.7);
+                          display: none;
+                          z-index: 9999;
+                      }
+
+                      .pinPopupClose {
+                          position: absolute;
+                          top: 10px;
+                          right: 10px;
+                          height: 20px;
+                          width: 20px;
+                          border-radius: 50%;
+                          background: #000;
+                          opacity: 0.3;
+                          text-align: center;
+                          color: #fff;
+                          cursor: pointer;
+                          font-size: 16px;
+                          line-height: 16px;
+                      }
+
+                      .pinPopupContent {
+                          padding: 5px 15px;
+                          color: #333;
+                          text-align: center;
+                      }
+
+                      .pinPopupTitle {
+                          padding-top: 5px;
+                          padding-bottom: 10px;
+                          font-weight: bold;
+                          border-bottom: 1px solid #ccc;
+                          font-size: 16px;
+                      }
+
+                      .pinPopupText {
+                          margin-top: 10px;
+                          margin-bottom: 5px;
+                          font-size: 12px;
+                      }
+
+                      .pinPopupButton {
+                          margin-top: 30px;
+                          margin-bottom: 30px;
+                          font-size: 12px;
+                      }
+
+                      .pinPopupButton a {
+                          background-color: #1473E6;
+                          color: #fff;
+                          text-decoration: none;
+                          border-radius: 15px;
+                          padding: 10px 20px;
+                          font-weight: bold;
+                      }
+
+                      .pinPopupImg img {
+                          width: 100%;
+                          height: auto;
+                          -webkit-border-top-left-radius: 4px;
+                          -webkit-border-top-right-radius: 4px;
+                          -moz-border-radius-topleft: 4px;
+                          -moz-border-radius-topright: 4px;
+                          border-top-left-radius: 4px;
+                          border-top-right-radius: 4px;
+                      }
+                    </style>
+                  </head>
+                  <body style="overflow: hidden;">
+                  <div id="pinPopupWrapper" onclick="myAllCloseFunction()"></div>
+                  <div id="atributation"><a href=\"https://www.maptiler.com/copyright/\"
+                                            target=\"_blank\">© MapTiler</a></div>
+                  <canvas id="renderCanvas"></canvas><script>var canvas = document.getElementById("renderCanvas");
+                  var engine = new BABYLON.Engine(canvas, true);
+                  var createScene = function () {
+                      var scene = new BABYLON.Scene(engine);
+                      scene.clearColor = new BABYLON.Color4(0, 0, 0, 0);
+                      var spot = new BABYLON.HemisphericLight("spot", new BABYLON.Vector3(1, 4.5, -1.2), scene);
+                      spot.intensity = 1.4;
+                      spot.diffuse = new BABYLON.Color3(1, 1, 1);
+                      spot.specular = new BABYLON.Color3(0.1, 0.1, 0.1);
+
+                      function createSidesForGroundMesh(ground, bottomY) {
+                          var sub = ground.subdivisions;
+                          var scene = ground.getScene();
+                          var edgeHeights = [];
+                          var borderHeights = [];
+                          ground.updateMeshPositions(function (positions) {
+                              var last = positions.length / 3 - 1;
+                              for (var idx = 0; idx < positions.length; idx += 3) {
+                                  var e = idx / 3;
+                                  var y = positions[idx + 1];
+                                  positions[idx + 1] = y;
+                                  var mod = e % (sub + 1);
+                                  if (mod == 0 || mod == sub) {
+                                      edgeHeights.push(y);
+                                  }
+                                  if (e <= sub || e >= last - sub) {
+                                      borderHeights.push(y);
+                                  }
+                              }
+                          });
+                          var groundSizeX = ground._width;
+                          var groundSizeZ = ground._height;
+                          var paths = [];
+                          var subSizeX = groundSizeX / sub;
+                          var subSizeZ = groundSizeZ / sub;
+                          var x = 0.0;
+                          var y = bottomY;
+                          var z = groundSizeZ / 2;
+                          var e = 0;
+                          var p = 0;
+                          var path = [];
+                          for (p = sub; p >= 0; p--) {
+                              x = subSizeX * p - groundSizeX / 2;
+                              path.push(new BABYLON.Vector3(x, borderHeights[p], z));
+                          }
+                          for (e = 0; e <= sub; e++) {
+                              z = -e * subSizeZ + groundSizeZ / 2;
+                              path.push(new BABYLON.Vector3(-groundSizeX / 2, edgeHeights[e * 2], z));
+                          }
+                          for (p = 0; p <= sub; p++) {
+                              x = subSizeX * p - groundSizeX / 2;
+                              path.push(new BABYLON.Vector3(x, borderHeights[p + sub + 1], z));
+                          }
+                          for (e = sub; e >= 0; e--) {
+                              z = -e * subSizeZ + groundSizeZ / 2;
+                              path.push(new BABYLON.Vector3(groundSizeX / 2, edgeHeights[e * 2 + 1], z));
+                          }
+                          paths.push(path);
+                          path = [];
+                          for (p = sub; p >= 0; p--) {
+                              x = subSizeX * p - groundSizeX / 2;
+                              path.push(new BABYLON.Vector3(x, y, z));
+                          }
+                          for (e = 0; e <= sub; e++) {
+                              z = -e * subSizeZ + groundSizeZ / 2;
+                              path.push(new BABYLON.Vector3(-groundSizeX / 2, y, z));
+                          }
+                          for (p = 0; p <= sub; p++) {
+                              x = subSizeX * p - groundSizeX / 2;
+                              path.push(new BABYLON.Vector3(x, y, z));
+                          }
+                          for (e = sub; e >= 0; e--) {
+                              z = -e * subSizeZ + groundSizeZ / 2;
+                              path.push(new BABYLON.Vector3(groundSizeX / 2, y, z));
+                          }
+                          paths.push(path);
+                          var groundRibbon = BABYLON.MeshBuilder.CreateRibbon("gr", {pathArray: paths}, scene);
+                          groundRibbon.position.copyFrom(ground.position);
+                          return groundRibbon;
+                      }
+
+                      var camera = new BABYLON.ArcRotateCamera("Camera", -54.77000981327122, 0.867078681759596, 111.84257232466423, new BABYLON.Vector3.Zero(), scene);
+                      camera.lowerBetaLimit = 0.1;
+                      camera.upperBetaLimit = (Math.PI / 2) * 0.9;
+                      camera.lowerRadiusLimit = 30;
+                      camera.upperRadiusLimit = 256;
+                      scene.activeCamera = camera;
+                      scene.activeCamera.attachControl(canvas);
+                      camera.useAutoRotationBehavior = true;
+                      camera.autoRotationBehavior.idleRotationSpeed = 0.1;
+                      var groundMaterial = new BABYLON.PBRMetallicRoughnessMaterial("mapSurfaceMaterial", scene);
+                      groundMaterial.metallic = 0.3;
+                      groundMaterial.roughness = 1.0;
+                      groundMaterial.baseTexture = new BABYLON.Texture("terrainmap.png", scene, true, true);
+                      var ground = BABYLON.Mesh.CreateGroundFromHeightMap("ground", "heightmap.png", 100, 99, 300, 0, 10, scene, true, successCallback);
+                      ground.material = groundMaterial;
+                      ground.position.y = 0;
+                      var groundMaterial2 = new BABYLON.StandardMaterial("mapSurfaceMaterial2", scene);
+                      groundMaterial2.diffuseTexture = new BABYLON.Texture("routemap.png", scene);
+                      groundMaterial2.diffuseTexture.hasAlpha = true;
+                      var ground2 = BABYLON.Mesh.CreateGroundFromHeightMap("mapSurface2", "heightmap.png", 100, 99, 300, 0, 10, scene, true);
+                      ground2.material = groundMaterial2;
+                      ground2.position.y = 0.1;
+
+                      function successCallback() {
+                          var groundRibbon = createSidesForGroundMesh(ground, -5);
+                          var groundRibbonMat = new BABYLON.StandardMaterial("grm", scene);
+                          var groundTex = new BABYLON.Texture("edges/ground_2.jpg", scene);
+                          groundTex.uScale = 16;
+                          groundTex.vScale = 1;
+                          groundRibbonMat.diffuseTexture = groundTex;
+                          groundRibbon.material = groundRibbonMat;
+                      }
+
+                      var skybox = BABYLON.MeshBuilder.CreateBox("skybox", {size: 1000.0}, scene);
+                      var skyboxMaterial = new BABYLON.StandardMaterial("skyBox", scene);
+                      skyboxMaterial.backFaceCulling = false;
+                      skyboxMaterial.reflectionTexture = new BABYLON.CubeTexture("skybox/skybox98", scene);
+                      skyboxMaterial.reflectionTexture.coordinatesMode = BABYLON.Texture.SKYBOX_MODE;
+                      skyboxMaterial.diffuseColor = new BABYLON.Color3(0, 0, 0);
+                      skyboxMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
+                      skybox.material = skyboxMaterial;
+                      var pinColor = "#35ff02";
+                      var pinName = "1683240338027";
+                      const corners1683240338027 = [new BABYLON.Vector2(0, 0), new BABYLON.Vector2(4, 6), new BABYLON.Vector2(4.5, 7), new BABYLON.Vector2(4.9, 8), new BABYLON.Vector2(5, 9), new BABYLON.Vector2(4.9, 10), new BABYLON.Vector2(4.5, 11), new BABYLON.Vector2(4, 12), new BABYLON.Vector2(3, 13), new BABYLON.Vector2(1.5, 13.7), new BABYLON.Vector2(0, 14), new BABYLON.Vector2(-1.5, 13.7), new BABYLON.Vector2(-3, 13), new BABYLON.Vector2(-4, 12), new BABYLON.Vector2(-4.5, 11), new BABYLON.Vector2(-4.9, 10), new BABYLON.Vector2(-5, 9), new BABYLON.Vector2(-4.9, 8), new BABYLON.Vector2(-4.5, 7), new BABYLON.Vector2(-4, 6)];
+                      const hole1683240338027 = [new BABYLON.Vector2(0, 7), new BABYLON.Vector2(1, 7.3), new BABYLON.Vector2(1.7, 8), new BABYLON.Vector2(2, 9), new BABYLON.Vector2(1.7, 10), new BABYLON.Vector2(1, 10.7), new BABYLON.Vector2(0, 11), new BABYLON.Vector2(-1, 10.7), new BABYLON.Vector2(-1.7, 10), new BABYLON.Vector2(-2, 9), new BABYLON.Vector2(-1.7, 8), new BABYLON.Vector2(-1, 7.3)];
+                      const poly_tri1683240338027 = new BABYLON.PolygonMeshBuilder(pinName, corners1683240338027);
+                      poly_tri1683240338027.addHole(hole1683240338027);
+                      const pin1683240338027 = poly_tri1683240338027.build(false, 1.5);
+                      pin1683240338027.rotation = new BABYLON.Vector3(-1.565, 0, 0);
+                      pin1683240338027.material = new BABYLON.StandardMaterial("matPin", scene);
+                      pin1683240338027.material.diffuseColor = BABYLON.Color3.FromHexString(pinColor);
+                      pin1683240338027.position.y = 2.683175;
+                      pin1683240338027.position.x = -16.236835;
+                      pin1683240338027.position.z = 20.416585;
+                      pin1683240338027.scaling.x = 0.3;
+                      pin1683240338027.scaling.y = 0.3;
+                      pin1683240338027.scaling.z = 0.3;
+                      pin1683240338027.billboardMode = BABYLON.Mesh.BILLBOARDMODE_Y;
+                      var pinColor = "#02ffff";
+                      var pinName = "1683239549174";
+                      const corners1683239549174 = [new BABYLON.Vector2(0, 0), new BABYLON.Vector2(4, 6), new BABYLON.Vector2(4.5, 7), new BABYLON.Vector2(4.9, 8), new BABYLON.Vector2(5, 9), new BABYLON.Vector2(4.9, 10), new BABYLON.Vector2(4.5, 11), new BABYLON.Vector2(4, 12), new BABYLON.Vector2(3, 13), new BABYLON.Vector2(1.5, 13.7), new BABYLON.Vector2(0, 14), new BABYLON.Vector2(-1.5, 13.7), new BABYLON.Vector2(-3, 13), new BABYLON.Vector2(-4, 12), new BABYLON.Vector2(-4.5, 11), new BABYLON.Vector2(-4.9, 10), new BABYLON.Vector2(-5, 9), new BABYLON.Vector2(-4.9, 8), new BABYLON.Vector2(-4.5, 7), new BABYLON.Vector2(-4, 6)];
+                      const hole1683239549174 = [new BABYLON.Vector2(0, 7), new BABYLON.Vector2(1, 7.3), new BABYLON.Vector2(1.7, 8), new BABYLON.Vector2(2, 9), new BABYLON.Vector2(1.7, 10), new BABYLON.Vector2(1, 10.7), new BABYLON.Vector2(0, 11), new BABYLON.Vector2(-1, 10.7), new BABYLON.Vector2(-1.7, 10), new BABYLON.Vector2(-2, 9), new BABYLON.Vector2(-1.7, 8), new BABYLON.Vector2(-1, 7.3)];
+                      const poly_tri1683239549174 = new BABYLON.PolygonMeshBuilder(pinName, corners1683239549174);
+                      poly_tri1683239549174.addHole(hole1683239549174);
+                      const pin1683239549174 = poly_tri1683239549174.build(false, 1.5);
+                      pin1683239549174.rotation = new BABYLON.Vector3(-1.565, 0, 0);
+                      pin1683239549174.material = new BABYLON.StandardMaterial("matPin", scene);
+                      pin1683239549174.material.diffuseColor = BABYLON.Color3.FromHexString(pinColor);
+                      pin1683239549174.position.y = 3.579090;
+                      pin1683239549174.position.x = -6.422269;
+                      pin1683239549174.position.z = 2.555961;
+                      pin1683239549174.scaling.x = 0.3;
+                      pin1683239549174.scaling.y = 0.3;
+                      pin1683239549174.scaling.z = 0.3;
+                      pin1683239549174.billboardMode = BABYLON.Mesh.BILLBOARDMODE_Y;
+                      var pinColor = "#02ffff";
+                      var pinName = "1683239655351";
+                      const corners1683239655351 = [new BABYLON.Vector2(0, 0), new BABYLON.Vector2(4, 6), new BABYLON.Vector2(4.5, 7), new BABYLON.Vector2(4.9, 8), new BABYLON.Vector2(5, 9), new BABYLON.Vector2(4.9, 10), new BABYLON.Vector2(4.5, 11), new BABYLON.Vector2(4, 12), new BABYLON.Vector2(3, 13), new BABYLON.Vector2(1.5, 13.7), new BABYLON.Vector2(0, 14), new BABYLON.Vector2(-1.5, 13.7), new BABYLON.Vector2(-3, 13), new BABYLON.Vector2(-4, 12), new BABYLON.Vector2(-4.5, 11), new BABYLON.Vector2(-4.9, 10), new BABYLON.Vector2(-5, 9), new BABYLON.Vector2(-4.9, 8), new BABYLON.Vector2(-4.5, 7), new BABYLON.Vector2(-4, 6)];
+                      const hole1683239655351 = [new BABYLON.Vector2(0, 7), new BABYLON.Vector2(1, 7.3), new BABYLON.Vector2(1.7, 8), new BABYLON.Vector2(2, 9), new BABYLON.Vector2(1.7, 10), new BABYLON.Vector2(1, 10.7), new BABYLON.Vector2(0, 11), new BABYLON.Vector2(-1, 10.7), new BABYLON.Vector2(-1.7, 10), new BABYLON.Vector2(-2, 9), new BABYLON.Vector2(-1.7, 8), new BABYLON.Vector2(-1, 7.3)];
+                      const poly_tri1683239655351 = new BABYLON.PolygonMeshBuilder(pinName, corners1683239655351);
+                      poly_tri1683239655351.addHole(hole1683239655351);
+                      const pin1683239655351 = poly_tri1683239655351.build(false, 1.5);
+                      pin1683239655351.rotation = new BABYLON.Vector3(-1.565, 0, 0);
+                      pin1683239655351.material = new BABYLON.StandardMaterial("matPin", scene);
+                      pin1683239655351.material.diffuseColor = BABYLON.Color3.FromHexString(pinColor);
+                      pin1683239655351.position.y = 2.941176;
+                      pin1683239655351.position.x = 6.295753;
+                      pin1683239655351.position.z = -23.984515;
+                      pin1683239655351.scaling.x = 0.3;
+                      pin1683239655351.scaling.y = 0.3;
+                      pin1683239655351.scaling.z = 0.3;
+                      pin1683239655351.billboardMode = BABYLON.Mesh.BILLBOARDMODE_Y;
+                      var pinColor = "#02ffff";
+                      var pinName = "1683239699963";
+                      const corners1683239699963 = [new BABYLON.Vector2(0, 0), new BABYLON.Vector2(4, 6), new BABYLON.Vector2(4.5, 7), new BABYLON.Vector2(4.9, 8), new BABYLON.Vector2(5, 9), new BABYLON.Vector2(4.9, 10), new BABYLON.Vector2(4.5, 11), new BABYLON.Vector2(4, 12), new BABYLON.Vector2(3, 13), new BABYLON.Vector2(1.5, 13.7), new BABYLON.Vector2(0, 14), new BABYLON.Vector2(-1.5, 13.7), new BABYLON.Vector2(-3, 13), new BABYLON.Vector2(-4, 12), new BABYLON.Vector2(-4.5, 11), new BABYLON.Vector2(-4.9, 10), new BABYLON.Vector2(-5, 9), new BABYLON.Vector2(-4.9, 8), new BABYLON.Vector2(-4.5, 7), new BABYLON.Vector2(-4, 6)];
+                      const hole1683239699963 = [new BABYLON.Vector2(0, 7), new BABYLON.Vector2(1, 7.3), new BABYLON.Vector2(1.7, 8), new BABYLON.Vector2(2, 9), new BABYLON.Vector2(1.7, 10), new BABYLON.Vector2(1, 10.7), new BABYLON.Vector2(0, 11), new BABYLON.Vector2(-1, 10.7), new BABYLON.Vector2(-1.7, 10), new BABYLON.Vector2(-2, 9), new BABYLON.Vector2(-1.7, 8), new BABYLON.Vector2(-1, 7.3)];
+                      const poly_tri1683239699963 = new BABYLON.PolygonMeshBuilder(pinName, corners1683239699963);
+                      poly_tri1683239699963.addHole(hole1683239699963);
+                      const pin1683239699963 = poly_tri1683239699963.build(false, 1.5);
+                      pin1683239699963.rotation = new BABYLON.Vector3(-1.565, 0, 0);
+                      pin1683239699963.material = new BABYLON.StandardMaterial("matPin", scene);
+                      pin1683239699963.material.diffuseColor = BABYLON.Color3.FromHexString(pinColor);
+                      pin1683239699963.position.y = 3.004463;
+                      pin1683239699963.position.x = 17.989250;
+                      pin1683239699963.position.z = 26.208089;
+                      pin1683239699963.scaling.x = 0.3;
+                      pin1683239699963.scaling.y = 0.3;
+                      pin1683239699963.scaling.z = 0.3;
+                      pin1683239699963.billboardMode = BABYLON.Mesh.BILLBOARDMODE_Y;
+                      var pinColor = "#02ffff";
+                      var pinName = "1683239730404";
+                      const corners1683239730404 = [new BABYLON.Vector2(0, 0), new BABYLON.Vector2(4, 6), new BABYLON.Vector2(4.5, 7), new BABYLON.Vector2(4.9, 8), new BABYLON.Vector2(5, 9), new BABYLON.Vector2(4.9, 10), new BABYLON.Vector2(4.5, 11), new BABYLON.Vector2(4, 12), new BABYLON.Vector2(3, 13), new BABYLON.Vector2(1.5, 13.7), new BABYLON.Vector2(0, 14), new BABYLON.Vector2(-1.5, 13.7), new BABYLON.Vector2(-3, 13), new BABYLON.Vector2(-4, 12), new BABYLON.Vector2(-4.5, 11), new BABYLON.Vector2(-4.9, 10), new BABYLON.Vector2(-5, 9), new BABYLON.Vector2(-4.9, 8), new BABYLON.Vector2(-4.5, 7), new BABYLON.Vector2(-4, 6)];
+                      const hole1683239730404 = [new BABYLON.Vector2(0, 7), new BABYLON.Vector2(1, 7.3), new BABYLON.Vector2(1.7, 8), new BABYLON.Vector2(2, 9), new BABYLON.Vector2(1.7, 10), new BABYLON.Vector2(1, 10.7), new BABYLON.Vector2(0, 11), new BABYLON.Vector2(-1, 10.7), new BABYLON.Vector2(-1.7, 10), new BABYLON.Vector2(-2, 9), new BABYLON.Vector2(-1.7, 8), new BABYLON.Vector2(-1, 7.3)];
+                      const poly_tri1683239730404 = new BABYLON.PolygonMeshBuilder(pinName, corners1683239730404);
+                      poly_tri1683239730404.addHole(hole1683239730404);
+                      const pin1683239730404 = poly_tri1683239730404.build(false, 1.5);
+                      pin1683239730404.rotation = new BABYLON.Vector3(-1.565, 0, 0);
+                      pin1683239730404.material = new BABYLON.StandardMaterial("matPin", scene);
+                      pin1683239730404.material.diffuseColor = BABYLON.Color3.FromHexString(pinColor);
+                      pin1683239730404.position.y = 4.490542;
+                      pin1683239730404.position.x = 7.886981;
+                      pin1683239730404.position.z = 11.345777;
+                      pin1683239730404.scaling.x = 0.3;
+                      pin1683239730404.scaling.y = 0.3;
+                      pin1683239730404.scaling.z = 0.3;
+                      pin1683239730404.billboardMode = BABYLON.Mesh.BILLBOARDMODE_Y;
+                      var pinColor = "#ff0202";
+                      var pinName = "1683239916102";
+                      const corners1683239916102 = [new BABYLON.Vector2(0, 0), new BABYLON.Vector2(4, 6), new BABYLON.Vector2(4.5, 7), new BABYLON.Vector2(4.9, 8), new BABYLON.Vector2(5, 9), new BABYLON.Vector2(4.9, 10), new BABYLON.Vector2(4.5, 11), new BABYLON.Vector2(4, 12), new BABYLON.Vector2(3, 13), new BABYLON.Vector2(1.5, 13.7), new BABYLON.Vector2(0, 14), new BABYLON.Vector2(-1.5, 13.7), new BABYLON.Vector2(-3, 13), new BABYLON.Vector2(-4, 12), new BABYLON.Vector2(-4.5, 11), new BABYLON.Vector2(-4.9, 10), new BABYLON.Vector2(-5, 9), new BABYLON.Vector2(-4.9, 8), new BABYLON.Vector2(-4.5, 7), new BABYLON.Vector2(-4, 6)];
+                      const hole1683239916102 = [new BABYLON.Vector2(0, 7), new BABYLON.Vector2(1, 7.3), new BABYLON.Vector2(1.7, 8), new BABYLON.Vector2(2, 9), new BABYLON.Vector2(1.7, 10), new BABYLON.Vector2(1, 10.7), new BABYLON.Vector2(0, 11), new BABYLON.Vector2(-1, 10.7), new BABYLON.Vector2(-1.7, 10), new BABYLON.Vector2(-2, 9), new BABYLON.Vector2(-1.7, 8), new BABYLON.Vector2(-1, 7.3)];
+                      const poly_tri1683239916102 = new BABYLON.PolygonMeshBuilder(pinName, corners1683239916102);
+                      poly_tri1683239916102.addHole(hole1683239916102);
+                      const pin1683239916102 = poly_tri1683239916102.build(false, 1.5);
+                      pin1683239916102.rotation = new BABYLON.Vector3(-1.565, 0, 0);
+                      pin1683239916102.material = new BABYLON.StandardMaterial("matPin", scene);
+                      pin1683239916102.material.diffuseColor = BABYLON.Color3.FromHexString(pinColor);
+                      pin1683239916102.position.y = 6.020256;
+                      pin1683239916102.position.x = -11.209068;
+                      pin1683239916102.position.z = -8.309421;
+                      pin1683239916102.scaling.x = 0.3;
+                      pin1683239916102.scaling.y = 0.3;
+                      pin1683239916102.scaling.z = 0.3;
+                      pin1683239916102.billboardMode = BABYLON.Mesh.BILLBOARDMODE_Y;
+                      var pinColor = "#ffc502";
+                      var pinName = "1683240114037";
+                      const corners1683240114037 = [new BABYLON.Vector2(0, 0), new BABYLON.Vector2(4, 6), new BABYLON.Vector2(4.5, 7), new BABYLON.Vector2(4.9, 8), new BABYLON.Vector2(5, 9), new BABYLON.Vector2(4.9, 10), new BABYLON.Vector2(4.5, 11), new BABYLON.Vector2(4, 12), new BABYLON.Vector2(3, 13), new BABYLON.Vector2(1.5, 13.7), new BABYLON.Vector2(0, 14), new BABYLON.Vector2(-1.5, 13.7), new BABYLON.Vector2(-3, 13), new BABYLON.Vector2(-4, 12), new BABYLON.Vector2(-4.5, 11), new BABYLON.Vector2(-4.9, 10), new BABYLON.Vector2(-5, 9), new BABYLON.Vector2(-4.9, 8), new BABYLON.Vector2(-4.5, 7), new BABYLON.Vector2(-4, 6)];
+                      const hole1683240114037 = [new BABYLON.Vector2(0, 7), new BABYLON.Vector2(1, 7.3), new BABYLON.Vector2(1.7, 8), new BABYLON.Vector2(2, 9), new BABYLON.Vector2(1.7, 10), new BABYLON.Vector2(1, 10.7), new BABYLON.Vector2(0, 11), new BABYLON.Vector2(-1, 10.7), new BABYLON.Vector2(-1.7, 10), new BABYLON.Vector2(-2, 9), new BABYLON.Vector2(-1.7, 8), new BABYLON.Vector2(-1, 7.3)];
+                      const poly_tri1683240114037 = new BABYLON.PolygonMeshBuilder(pinName, corners1683240114037);
+                      poly_tri1683240114037.addHole(hole1683240114037);
+                      const pin1683240114037 = poly_tri1683240114037.build(false, 1.5);
+                      pin1683240114037.rotation = new BABYLON.Vector3(-1.565, 0, 0);
+                      pin1683240114037.material = new BABYLON.StandardMaterial("matPin", scene);
+                      pin1683240114037.material.diffuseColor = BABYLON.Color3.FromHexString(pinColor);
+                      pin1683240114037.position.y = 2.141001;
+                      pin1683240114037.position.x = -5.530482;
+                      pin1683240114037.position.z = -26.981197;
+                      pin1683240114037.scaling.x = 0.3;
+                      pin1683240114037.scaling.y = 0.3;
+                      pin1683240114037.scaling.z = 0.3;
+                      pin1683240114037.billboardMode = BABYLON.Mesh.BILLBOARDMODE_Y;
+                      var markerText = "HYDROBASE LAC SEBASTIEN";
+                      var markerName = "1683239857438";
+                      marker1683239857438 = BABYLON.MeshBuilder.CreateSphere(markerName, {
+                          diameter: 0.5,
+                          segments: 64
+                      }, scene);
+                      marker1683239857438.material = new BABYLON.StandardMaterial("mat", scene);
+                      marker1683239857438.material.diffuseColor = BABYLON.Color3.FromHexString("#ffffff");
+                      marker1683239857438.position.y = 1.882436;
+                      marker1683239857438.position.x = 7.580244;
+                      marker1683239857438.position.z = -39.057859;
+                      var path = [new BABYLON.Vector3(0, 7.5, 0), new BABYLON.Vector3(0, 0, 0)];
+                      var tube1683239857438 = BABYLON.MeshBuilder.CreateTube("tube", {path: path, radius: 0.09}, scene);
+                      tube1683239857438.material = new BABYLON.StandardMaterial("mat", scene);
+                      tube1683239857438.material.diffuseColor = BABYLON.Color3.FromHexString("#ffffff");
+                      tube1683239857438.parent = marker1683239857438;
+                      var font_size = 48;
+                      var font = font_size + "px Arial";
+                      var planeHeight = 2;
+                      var DTHeight = 1.4 * font_size;
+                      var ratio = planeHeight / DTHeight;
+                      var temp = new BABYLON.DynamicTexture("DynamicTexture", 64, scene);
+                      var tmpctx = temp.getContext();
+                      tmpctx.font = font;
+                      var DTWidth = tmpctx.measureText(markerText).width + 40;
+                      var planeWidth = DTWidth * ratio;
+                      var dynamicTexture = new BABYLON.DynamicTexture("DynamicTexture", {
+                          width: DTWidth | 0,
+                          height: DTHeight | 0
+                      }, scene, false);
+                      var mat1683239857438 = new BABYLON.StandardMaterial("mat", scene);
+                      mat1683239857438.diffuseTexture = dynamicTexture;
+                      mat1683239857438.backFaceCulling = false;
+                      dynamicTexture.drawText(markerText, null, null, font, "#000000", "#ffffff", true);
+                      var plane1683239857438 = BABYLON.MeshBuilder.CreatePlane("plane", {
+                          width: planeWidth,
+                          height: planeHeight
+                      }, scene, false, BABYLON.Mesh.DOUBLESIDE);
+                      plane1683239857438.position.y = 8.5;
+                      plane1683239857438.parent = marker1683239857438;
+                      plane1683239857438.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+                      plane1683239857438.material = mat1683239857438;
+                      pin1683239957413 = BABYLON.MeshBuilder.CreateSphere("1683239957413", {
+                          diameter: 1.5,
+                          segments: 32
+                      }, scene);
+                      pin1683239957413.material = new BABYLON.StandardMaterial("matPin", scene);
+                      pin1683239957413.material.diffuseColor = BABYLON.Color3.FromHexString("#ff0202");
+                      pin1683239957413.position.y = 9.681761;
+                      pin1683239957413.position.x = 36.238592;
+                      pin1683239957413.position.z = 20.823228;
+                      var path = [new BABYLON.Vector3(0, 0, 0), new BABYLON.Vector3(0, -7, 0)];
+                      var tubePin1683239957413 = BABYLON.MeshBuilder.CreateTube("tubePin", {
+                          path: path,
+                          radius: 0.10
+                      }, scene);
+                      tubePin1683239957413.material = new BABYLON.StandardMaterial("matPin", scene);
+                      tubePin1683239957413.material.diffuseColor = BABYLON.Color3.FromHexString("#ffffff");
+                      tubePin1683239957413.parent = pin1683239957413;
+                      pin1683239957413.actionManager = new BABYLON.ActionManager(scene);
+                      pin1683239957413.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPickTrigger, pickPin));
+
+                      function pickPin(meshEvent) {
+                          var pickedMesh = meshEvent.meshUnderPointer;
+                          var pickedName = pickedMesh.name;
+                          document.getElementById('pinPopupWrapper').style.display = 'block';
+                          document.getElementById(pickedName).style.display = 'block';
+                      }
+
+                      return scene;
+                  };
+                  var engine = new BABYLON.Engine(canvas, true, {preserveDrawingBuffer: true, stencil: true});
+                  var scene = createScene();
+                  engine.runRenderLoop(function () {
+                      scene.render();
+                  });
+                  window.addEventListener("resize", function () {
+                      engine.resize();
+                  });</script><script>function myAllCloseFunction() {
+                      document.getElementById('pinPopupWrapper').style.display = 'none';
+                      var pinPopups = document.getElementsByClassName('pinPopup');
+                      for (var i = 0; i < pinPopups.length; i++) {
+                          pinPopups[i].style.display = 'none';
+                      }
+                  }
+
+                  function myCloseFunction(myid) {
+                      document.getElementById('pinPopupWrapper').style.display = 'none';
+                      document.getElementById(myid).style.display = 'none';
+                  } </script></body></html>
